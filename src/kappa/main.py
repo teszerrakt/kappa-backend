@@ -1,5 +1,6 @@
 # KAPPA BACKEND
 import os
+import threading
 import timeit
 
 import numpy as np
@@ -27,13 +28,53 @@ KAPPA_USER_ID = "KAPPA_NEW_USER"
 init_db()
 
 _precomputed_cache = {}
+_ready = threading.Event()
+
+
+def _background_precompute():
+    """Load or compute precomputed matrices for all methods at startup."""
+    methods = ["kmeans", "dbscan"]
+    for method in methods:
+        try:
+            loaded = load_precomputed(method)
+            if loaded:
+                _precomputed_cache[method] = {
+                    "user_item_matrix": loaded["user_item_matrix"],
+                    "cluster_labels": loaded["cluster_labels"],
+                    "centroids": loaded["centroids"],
+                    "computed_at": loaded["computed_at"],
+                }
+                print("Loaded existing precomputed data for {}".format(method))
+            else:
+                print("No precomputed data for {}, computing...".format(method))
+                run_precompute(method)
+                loaded = load_precomputed(method)
+                if loaded:
+                    _precomputed_cache[method] = {
+                        "user_item_matrix": loaded["user_item_matrix"],
+                        "cluster_labels": loaded["cluster_labels"],
+                        "centroids": loaded["centroids"],
+                        "computed_at": loaded["computed_at"],
+                    }
+                print("Precomputed data for {} ready".format(method))
+        except Exception as exc:
+            print("Error precomputing {}: {}".format(method, exc))
+    _ready.set()
+    print("Background precompute complete, service ready")
+
+
+def start_precompute_thread():
+    """Start the background precompute thread. Called from gunicorn post_fork hook."""
+    t = threading.Thread(target=_background_precompute, daemon=True)
+    t.start()
+    return t
 
 
 @app.before_request
 def require_api_token():
     if request.method == "OPTIONS":
         return None
-    if request.path in {"/", "/health"}:
+    if request.path in {"/", "/health", "/ready"}:
         return None
     if not API_TOKEN:
         return Response("Server token not configured", status=500)
@@ -141,6 +182,13 @@ def index():
 @app.route("/health")
 def health():
     return Response("OK", status=200)
+
+
+@app.route("/ready")
+def ready():
+    if _ready.is_set():
+        return Response("OK", status=200)
+    return Response("Precomputing", status=503)
 
 
 @app.route("/api/kmeans", methods=["POST"])
