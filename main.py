@@ -19,6 +19,8 @@ API_TOKEN = os.environ.get("KAPPA_API_TOKEN")
 
 @app.before_request
 def require_api_token():
+    if request.method == "OPTIONS":
+        return None
     if request.path in {"/", "/health"}:
         return None
     if not API_TOKEN:
