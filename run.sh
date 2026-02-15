@@ -7,4 +7,4 @@ if [ ! -s "$DB_PATH" ]; then
   python src/scripts/migrate.py
 fi
 
-gunicorn wsgi:app --bind 0.0.0.0:80 --log-level=debug --workers=2
+gunicorn wsgi:app --preload --config gunicorn.conf.py --bind 0.0.0.0:80 --log-level=debug --workers=2
