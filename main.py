@@ -1,15 +1,32 @@
 # KAPPA BACKEND
-from flask import Flask, request, jsonify, Response
-from flask_cors import CORS
-from load_data import merge_user_rating, load_rating_data
-from cluster import kmeans_clustering, dbscan_clustering
-from predict import find_neighbor, predict
-import pandas as pd
-import numpy as np
+import os
 import timeit
 
+import numpy as np
+import pandas as pd
+from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
+
+from cluster import kmeans_clustering, dbscan_clustering
+from load_data import merge_user_rating, load_rating_data
+from predict import find_neighbor, predict
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, allow_headers=["Content-Type", "X-API-Key"])  # allow frontend token header
+
+API_TOKEN = os.environ.get("KAPPA_API_TOKEN")
+
+
+@app.before_request
+def require_api_token():
+    if request.path in {"/", "/health"}:
+        return None
+    if not API_TOKEN:
+        return Response("Server token not configured", status=500)
+    token = request.headers.get("X-API-Key")
+    if token != API_TOKEN:
+        return Response("Unauthorized", status=401)
+    return None
 
 # Rating data
 all_data = pd.read_csv('rating_5_min_75.csv')
